@@ -7,7 +7,7 @@ use crate::errors::UnauthorizedError;
 // --------------------------------------------------
 
 pub fn is_authenticated(req: &ApiGatewayProxyRequest) -> bool {
-    match req.request_context.authorizer.get("claims") {
+    match req.request_context.authorizer.fields.get("claims") {
         Some(claims) => match claims.get("cognito:username") {
             Some(_) => true,
             None => false,
@@ -17,7 +17,7 @@ pub fn is_authenticated(req: &ApiGatewayProxyRequest) -> bool {
 }
 
 pub fn is_admin(req: &ApiGatewayProxyRequest) -> bool {
-    match req.request_context.authorizer.get("claims") {
+    match req.request_context.authorizer.fields.get("claims") {
         Some(claims) => match claims.get("cognito:groups") {
             Some(groups_val) => match groups_val.as_str() {
                 Some(groups_str) => groups_str.split(',').any(|g| g == "admin"),
@@ -33,7 +33,7 @@ pub fn get_sub_of_authenticated_user(
     req: &ApiGatewayProxyRequest,
 ) -> Result<String, GenericServerError> {
     let dbg_cxt: &'static str = "get_sub_of_authenticated_user";
-    match req.request_context.authorizer.get("claims") {
+    match req.request_context.authorizer.fields.get("claims") {
         Some(claims) => match claims.get("sub") {
             Some(sub) => match sub.as_str() {
                 Some(sub_str) => Ok(sub_str.into()),
@@ -62,19 +62,24 @@ pub fn get_sub_of_authenticated_user(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aws_lambda_events::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyRequestContext};
+    use aws_lambda_events::apigw::{
+        ApiGatewayProxyRequest, ApiGatewayProxyRequestContext, ApiGatewayRequestAuthorizer,
+    };
 
     fn create_authenticated_request() -> ApiGatewayProxyRequest {
         ApiGatewayProxyRequest {
             request_context: ApiGatewayProxyRequestContext {
-                authorizer: [(
-                    "claims".into(),
-                    serde_json::json!({
-                        "cognito:username": "FakeUsername",
-                        "sub": "FakeUserSub"
-                    }),
-                )]
-                .into(),
+                authorizer: ApiGatewayRequestAuthorizer {
+                    fields: [(
+                        "claims".into(),
+                        serde_json::json!({
+                            "cognito:username": "FakeUsername",
+                            "sub": "FakeUserSub"
+                        }),
+                    )]
+                    .into(),
+                    ..Default::default()
+                },
                 ..Default::default()
             },
             ..Default::default()
