@@ -16,6 +16,7 @@ pub fn is_authenticated(req: &ApiGatewayProxyRequest) -> bool {
     }
 }
 
+// This function assumes a UserPool group named "admin".
 pub fn is_admin(req: &ApiGatewayProxyRequest) -> bool {
     match req.request_context.authorizer.fields.get("claims") {
         Some(claims) => match claims.get("cognito:groups") {
