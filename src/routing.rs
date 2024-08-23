@@ -8,12 +8,12 @@ use core::future::Future;
 use lambda_runtime::{Error, LambdaEvent};
 use std::pin::Pin;
 
-use crate::errors::{InvalidRouteError, UnauthorizedError};
-
-use super::{
-    auth::{is_admin, is_authenticated},
-    response::build_error,
+use crate::{
+    errors::{InvalidRouteError, UnauthorizedError},
+    request::{parse_request_metadata, RequestMetadata},
 };
+
+use super::response::build_error;
 
 // API Gateway routing config.
 // --------------------------------------------------
@@ -28,6 +28,7 @@ pub enum AccessLevel {
 type RouteHandler = Box<
     dyn Fn(
         LambdaEvent<ApiGatewayProxyRequest>,
+        RequestMetadata,
     ) -> Pin<Box<dyn Future<Output = Result<ApiGatewayProxyResponse, Error>>>>,
 >;
 
@@ -52,11 +53,13 @@ pub struct RoutingConfig {
 // API Gateway routing utils.
 // --------------------------------------------------
 
-pub fn box_route_handler<T>(f: fn(LambdaEvent<ApiGatewayProxyRequest>) -> T) -> RouteHandler
+pub fn box_route_handler<T>(
+    f: fn(LambdaEvent<ApiGatewayProxyRequest>, RequestMetadata) -> T,
+) -> RouteHandler
 where
     T: Future<Output = Result<ApiGatewayProxyResponse, Error>> + 'static,
 {
-    Box::new(move |e| Box::pin(f(e)))
+    Box::new(move |e, m| Box::pin(f(e, m)))
 }
 
 fn find_function_route<'a>(
@@ -105,8 +108,7 @@ pub async fn handle_route(
     event: LambdaEvent<ApiGatewayProxyRequest>,
 ) -> Result<ApiGatewayProxyResponse, Error> {
     let dbg_cxt: &'static str = "handle_route";
-    let is_logged_in = is_authenticated(&event.payload);
-    let is_admin = is_admin(&event.payload);
+    let metadata = parse_request_metadata(&event.payload);
 
     let route_search =
         find_function_route(&config, &event).or_else(|| find_crud_route(&config, &event));
@@ -117,13 +119,13 @@ pub async fn handle_route(
 
     let is_authenticated_for_route = match access_level {
         AccessLevel::Guest => true,
-        AccessLevel::User => is_logged_in,
-        AccessLevel::Admin => is_logged_in && is_admin,
+        AccessLevel::User => metadata.is_authenticated,
+        AccessLevel::Admin => metadata.is_authenticated && metadata.is_admin,
         AccessLevel::None => false,
     };
 
     if is_authenticated_for_route {
-        handler(event).await
+        handler(event, metadata).await
     } else {
         build_error(UnauthorizedError::new(
             dbg_cxt,

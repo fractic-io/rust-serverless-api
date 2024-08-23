@@ -1,12 +1,21 @@
 use aws_lambda_events::apigw::ApiGatewayProxyRequest;
 use fractic_generic_server_error::GenericServerError;
 
-use crate::errors::InvalidRequestError;
+use crate::{
+    auth::{is_admin, is_authenticated},
+    errors::InvalidRequestError,
+};
+
+#[derive(Debug, Clone)]
+pub struct RequestMetadata {
+    pub is_authenticated: bool,
+    pub is_admin: bool,
+}
 
 // API Gateway request utils.
 // --------------------------------------------------
 
-pub fn parse_request<T>(request: &ApiGatewayProxyRequest) -> Result<T, GenericServerError>
+pub fn parse_request_data<T>(request: &ApiGatewayProxyRequest) -> Result<T, GenericServerError>
 where
     T: serde::de::DeserializeOwned,
 {
@@ -22,6 +31,13 @@ where
         }
     };
     serde_json::from_str(body).map_err(|e| InvalidRequestError::new(dbg_cxt, "", e.to_string()))
+}
+
+pub fn parse_request_metadata(request: &ApiGatewayProxyRequest) -> RequestMetadata {
+    RequestMetadata {
+        is_authenticated: is_authenticated(request),
+        is_admin: is_admin(request),
+    }
 }
 
 // Tests.
@@ -43,7 +59,7 @@ mod tests {
             body: Some("{\"key\":\"value\"}".to_string()),
             ..Default::default()
         };
-        let result = parse_request::<TestData>(&request);
+        let result = parse_request_data::<TestData>(&request);
         assert_eq!(
             result.unwrap(),
             TestData {
@@ -58,7 +74,7 @@ mod tests {
             body: None,
             ..Default::default()
         };
-        let result = parse_request::<TestData>(&request);
+        let result = parse_request_data::<TestData>(&request);
         assert_eq!(
             result.unwrap_err().to_string(),
             "Request format was invalid: missing request body."
@@ -71,7 +87,7 @@ mod tests {
             body: Some("{invalid}".to_string()),
             ..Default::default()
         };
-        let result = parse_request::<TestData>(&request);
+        let result = parse_request_data::<TestData>(&request);
         assert!(format!("{:?}", result.unwrap_err()).contains("InvalidRequestError"));
     }
 
@@ -81,7 +97,7 @@ mod tests {
             body: Some("{\"different_key\":\"value\"}".to_string()),
             ..Default::default()
         };
-        let result = parse_request::<TestData>(&request);
+        let result = parse_request_data::<TestData>(&request);
         assert!(format!("{:?}", result.unwrap_err()).contains("InvalidRequestError"));
     }
 }

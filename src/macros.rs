@@ -36,28 +36,34 @@ macro_rules! aws_lambda_from_routing_config {
 
 #[macro_export]
 macro_rules! register_function_route {
-    ($handler_name:ident, $func_name:ident, $request_data_type:ident) => {
+    ($handler_name:ident, $func:ident, $validator:ident, $request_data_type:ident) => {
         pub async fn $handler_name(
             event: LambdaEvent<ApiGatewayProxyRequest>,
+            metadata: RequestMetadata,
         ) -> Result<ApiGatewayProxyResponse, Error> {
-            let request_parsing = parse_request::<$request_data_type>(&event.payload);
-            if request_parsing.is_ok() {
-                match $func_name(request_parsing.unwrap()).await {
-                    Ok(result) => build_result(result),
-                    Err(error) => build_error(error),
-                }
-            } else {
-                build_error(request_parsing.unwrap_err())
+            match parse_request_data::<$request_data_type>(&event.payload) {
+                Ok(obj) => match $validator(&obj, metadata) {
+                    Ok(_) => match $func(obj).await {
+                        Ok(result) => build_result(result),
+                        Err(func_error) => build_error(func_error),
+                    },
+                    Err(validation_error) => build_error(validation_error),
+                },
+                Err(request_parsing_error) => build_error(request_parsing_error),
             }
         }
     };
-    ($handler_name:ident, $func_name:ident) => {
+    ($handler_name:ident, $func:ident, $validator:ident) => {
         pub async fn $handler_name(
             event: LambdaEvent<ApiGatewayProxyRequest>,
+            metadata: RequestMetadata,
         ) -> Result<ApiGatewayProxyResponse, Error> {
-            match $func_name().await {
-                Ok(result) => build_result(result),
-                Err(error) => build_error(error),
+            match $validator(metadata) {
+                Ok(_) => match $func().await {
+                    Ok(result) => build_result(result),
+                    Err(func_error) => build_error(func_error),
+                },
+                Err(validation_error) => build_error(validation_error),
             }
         }
     };
