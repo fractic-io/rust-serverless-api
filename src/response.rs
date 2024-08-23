@@ -126,7 +126,7 @@ mod tests {
         assert_eq!(body["data"].is_null(), true);
         assert_eq!(
             body["error"].as_str().unwrap(),
-            "Request format was invalid: user visible info."
+            "Invalid request: user visible info."
         );
     }
 

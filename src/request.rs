@@ -77,7 +77,7 @@ mod tests {
         let result = parse_request_data::<TestData>(&request);
         assert_eq!(
             result.unwrap_err().to_string(),
-            "Request format was invalid: missing request body."
+            "Invalid request: missing request body."
         );
     }
 
