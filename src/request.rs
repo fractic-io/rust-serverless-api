@@ -2,7 +2,7 @@ use aws_lambda_events::apigw::ApiGatewayProxyRequest;
 use fractic_generic_server_error::GenericServerError;
 
 use crate::{
-    auth::{is_admin, is_authenticated},
+    auth::{get_sub_of_authenticated_user, is_admin, is_authenticated},
     errors::InvalidRequestError,
 };
 
@@ -10,6 +10,7 @@ use crate::{
 pub struct RequestMetadata {
     pub is_authenticated: bool,
     pub is_admin: bool,
+    pub user_sub: Option<String>,
 }
 
 // API Gateway request utils.
@@ -33,11 +34,19 @@ where
     serde_json::from_str(body).map_err(|e| InvalidRequestError::new(dbg_cxt, "", e.to_string()))
 }
 
-pub fn parse_request_metadata(request: &ApiGatewayProxyRequest) -> RequestMetadata {
-    RequestMetadata {
-        is_authenticated: is_authenticated(request),
+pub fn parse_request_metadata(
+    request: &ApiGatewayProxyRequest,
+) -> Result<RequestMetadata, GenericServerError> {
+    let is_authenticated = is_authenticated(request);
+    Ok(RequestMetadata {
+        is_authenticated,
         is_admin: is_admin(request),
-    }
+        user_sub: if is_authenticated {
+            Some(get_sub_of_authenticated_user(request)?)
+        } else {
+            None
+        },
+    })
 }
 
 // Tests.

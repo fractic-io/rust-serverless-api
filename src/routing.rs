@@ -108,7 +108,10 @@ pub async fn handle_route(
     event: LambdaEvent<ApiGatewayProxyRequest>,
 ) -> Result<ApiGatewayProxyResponse, Error> {
     let dbg_cxt: &'static str = "handle_route";
-    let metadata = parse_request_metadata(&event.payload);
+    let metadata = match parse_request_metadata(&event.payload) {
+        Ok(m) => m,
+        Err(e) => return build_error(e),
+    };
 
     let route_search =
         find_function_route(&config, &event).or_else(|| find_crud_route(&config, &event));
