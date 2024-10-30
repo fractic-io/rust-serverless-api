@@ -68,3 +68,18 @@ macro_rules! register_function_route {
         }
     };
 }
+
+#[macro_export]
+macro_rules! register_function_route_raw {
+    ($handler_name:ident, $func:ident) => {
+        pub async fn $handler_name(
+            event: LambdaEvent<ApiGatewayProxyRequest>,
+            metadata: RequestMetadata,
+        ) -> Result<ApiGatewayProxyResponse, Error> {
+            match $func(event.payload.headers, event.payload.body).await {
+                Ok(result) => Ok(build_simple(result)),
+                Err(func_error) => build_error(func_error),
+            }
+        }
+    };
+}
