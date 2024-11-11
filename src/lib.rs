@@ -5,9 +5,17 @@
 // For this entire library, remap the serde_json crate to use it instead:
 extern crate serde_json_path_to_error as serde_json;
 
-pub mod auth;
-pub mod errors;
-pub mod macros;
-pub mod request;
-pub mod response;
-pub mod routing;
+mod auth;
+mod crud;
+mod errors;
+mod macros;
+mod request;
+mod response;
+mod routing;
+
+pub use auth::*;
+pub use crud::*;
+pub use errors::*;
+pub use request::*;
+pub use response::*;
+pub use routing::*;
