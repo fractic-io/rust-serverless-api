@@ -1,5 +1,5 @@
 use aws_lambda_events::apigw::ApiGatewayProxyRequest;
-use fractic_generic_server_error::{common::CriticalError, GenericServerError};
+use fractic_server_error::{common::CriticalError, GenericServerError};
 
 use crate::errors::UnauthorizedError;
 

@@ -1,5 +1,5 @@
 use aws_lambda_events::apigw::ApiGatewayProxyRequest;
-use fractic_generic_server_error::GenericServerError;
+use fractic_server_error::GenericServerError;
 
 use crate::{
     auth::{get_sub_of_authenticated_user, is_admin, is_authenticated},

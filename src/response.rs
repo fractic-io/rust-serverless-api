@@ -9,7 +9,7 @@ use aws_lambda_events::{
         HeaderMap,
     },
 };
-use fractic_generic_server_error::GenericServerError;
+use fractic_server_error::GenericServerError;
 use lambda_runtime::Error;
 use serde::Serialize;
 
@@ -137,7 +137,7 @@ mod tests {
     use super::*;
     use crate::errors::UnauthorizedError;
     use aws_lambda_events::encodings::Body;
-    use fractic_generic_server_error::common::CriticalError;
+    use fractic_server_error::common::CriticalError;
     use serde_json::Value;
 
     #[derive(Debug, Serialize)]

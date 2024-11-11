@@ -4,8 +4,8 @@ use fractic_aws_dynamo::errors::DynamoNotFound;
 use fractic_aws_dynamo::schema::{DynamoObject, PkSk};
 use fractic_aws_dynamo::util::DynamoUtil;
 use fractic_env_config::{load_env, EnvConfigEnum};
-use fractic_generic_server_error::common::CriticalError;
-use fractic_generic_server_error::GenericServerError;
+use fractic_server_error::common::CriticalError;
+use fractic_server_error::GenericServerError;
 use lambda_runtime::Error;
 use lambda_runtime::LambdaEvent;
 
