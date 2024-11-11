@@ -135,7 +135,7 @@ fn build_headers() -> HeaderMap {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::errors::InvalidRequestError;
+    use crate::errors::UnauthorizedError;
     use aws_lambda_events::encodings::Body;
     use fractic_generic_server_error::common::CriticalError;
     use serde_json::Value;
@@ -181,7 +181,7 @@ mod tests {
 
     #[test]
     fn test_build_error_shown_to_client() {
-        let error = InvalidRequestError::new("cxt", "msg", "user visible info".to_string());
+        let error = UnauthorizedError::new("cxt", "msg");
         let result = build_error(error).unwrap();
         let body: Value = serde_json::from_str(match &result.body.unwrap() {
             Body::Text(b) => b,
@@ -192,10 +192,11 @@ mod tests {
         assert_eq!(result.status_code, 200);
         assert_eq!(body["ok"].as_bool().unwrap(), false);
         assert_eq!(body["data"].is_null(), true);
-        assert_eq!(
-            body["error"].as_str().unwrap(),
-            "Invalid request: user visible info."
-        );
+        assert!(body["error"]
+            .as_str()
+            .unwrap()
+            .to_lowercase()
+            .contains("not authorized"));
     }
 
     #[test]

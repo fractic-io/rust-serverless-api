@@ -24,14 +24,15 @@ where
     let body = match &request.body {
         Some(b) => b,
         None => {
-            return Err(InvalidRequestError::new(
+            return Err(InvalidRequestError::with_debug(
                 dbg_cxt,
                 "",
                 "missing request body".to_string(),
             ));
         }
     };
-    serde_json::from_str(body).map_err(|e| InvalidRequestError::new(dbg_cxt, "", e.to_string()))
+    serde_json::from_str(body)
+        .map_err(|e| InvalidRequestError::with_debug(dbg_cxt, "", e.to_string()))
 }
 
 pub fn parse_request_metadata(
@@ -84,10 +85,9 @@ mod tests {
             ..Default::default()
         };
         let result = parse_request_data::<TestData>(&request);
-        assert_eq!(
-            result.unwrap_err().to_string(),
-            "Invalid request: missing request body."
-        );
+        let err = result.unwrap_err();
+        assert!(err.to_string().to_lowercase().contains("invalid"));
+        assert!(err.debug().unwrap().contains("missing request body"));
     }
 
     #[test]
