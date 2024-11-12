@@ -107,7 +107,6 @@ pub async fn handle_route(
     config: RoutingConfig,
     event: LambdaEvent<ApiGatewayProxyRequest>,
 ) -> Result<ApiGatewayProxyResponse, Error> {
-    let dbg_cxt: &'static str = "handle_route";
     let metadata = match parse_request_metadata(&event.payload) {
         Ok(m) => m,
         Err(e) => return build_error(e),
@@ -117,7 +116,7 @@ pub async fn handle_route(
         find_function_route(&config, &event).or_else(|| find_crud_route(&config, &event));
     let (handler, access_level) = match route_search {
         Some((handler, access_level)) => (handler, access_level),
-        None => return build_error(InvalidRouteError::new(dbg_cxt, "Route does not exist.")),
+        None => return build_error(InvalidRouteError::new(event.payload.path)),
     };
 
     let is_authenticated_for_route = match access_level {
@@ -130,9 +129,6 @@ pub async fn handle_route(
     if is_authenticated_for_route {
         handler(event, metadata).await
     } else {
-        build_error(UnauthorizedError::new(
-            dbg_cxt,
-            "Not authorized to access route.",
-        ))
+        build_error(UnauthorizedError::new())
     }
 }

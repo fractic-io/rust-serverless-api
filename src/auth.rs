@@ -1,5 +1,5 @@
 use aws_lambda_events::apigw::ApiGatewayProxyRequest;
-use fractic_server_error::{common::CriticalError, GenericServerError};
+use fractic_server_error::{CriticalError, ServerError};
 
 use crate::errors::UnauthorizedError;
 
@@ -30,29 +30,19 @@ pub fn is_admin(req: &ApiGatewayProxyRequest) -> bool {
     }
 }
 
-pub fn get_sub_of_authenticated_user(
-    req: &ApiGatewayProxyRequest,
-) -> Result<String, GenericServerError> {
-    let dbg_cxt: &'static str = "get_sub_of_authenticated_user";
+pub fn get_sub_of_authenticated_user(req: &ApiGatewayProxyRequest) -> Result<String, ServerError> {
     match req.request_context.authorizer.fields.get("claims") {
         Some(claims) => match claims.get("sub") {
             Some(sub) => match sub.as_str() {
                 Some(sub_str) => Ok(sub_str.into()),
                 // Unexpected, so throw a Critical error.
-                None => Err(CriticalError::new(
-                    dbg_cxt,
-                    "authorizer claims sub was not a string",
-                )),
+                None => Err(CriticalError::new("authorizer claims sub was not a string")),
             },
             // Unexpected, so throw a Critical error.
-            None => Err(CriticalError::new(
-                dbg_cxt,
-                "authorizer claims did not contain sub",
-            )),
+            None => Err(CriticalError::new("authorizer claims did not contain sub")),
         },
-        None => Err(UnauthorizedError::new(
-            dbg_cxt,
-            "authorizer did not contain any claims",
+        None => Err(UnauthorizedError::with_debug(
+            &"authorizer did not contain any claims".to_string(),
         )),
     }
 }

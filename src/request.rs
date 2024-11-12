@@ -1,5 +1,5 @@
 use aws_lambda_events::apigw::ApiGatewayProxyRequest;
-use fractic_server_error::GenericServerError;
+use fractic_server_error::ServerError;
 
 use crate::{
     auth::{get_sub_of_authenticated_user, is_admin, is_authenticated},
@@ -16,28 +16,22 @@ pub struct RequestMetadata {
 // API Gateway request utils.
 // --------------------------------------------------
 
-pub fn parse_request_data<T>(request: &ApiGatewayProxyRequest) -> Result<T, GenericServerError>
+pub fn parse_request_data<T>(request: &ApiGatewayProxyRequest) -> Result<T, ServerError>
 where
     T: serde::de::DeserializeOwned,
 {
-    let dbg_cxt: &'static str = "parse_request";
     let body = match &request.body {
         Some(b) => b,
         None => {
-            return Err(InvalidRequestError::with_debug(
-                dbg_cxt,
-                "",
-                "missing request body".to_string(),
-            ));
+            return Err(InvalidRequestError::new("missing request body"));
         }
     };
-    serde_json::from_str(body)
-        .map_err(|e| InvalidRequestError::with_debug(dbg_cxt, "", e.to_string()))
+    serde_json::from_str(body).map_err(|e| InvalidRequestError::with_debug("parsing error", &e))
 }
 
 pub fn parse_request_metadata(
     request: &ApiGatewayProxyRequest,
-) -> Result<RequestMetadata, GenericServerError> {
+) -> Result<RequestMetadata, ServerError> {
     let is_authenticated = is_authenticated(request);
     Ok(RequestMetadata {
         is_authenticated,
@@ -85,9 +79,8 @@ mod tests {
             ..Default::default()
         };
         let result = parse_request_data::<TestData>(&request);
-        let err = result.unwrap_err();
-        assert!(err.to_string().to_lowercase().contains("invalid"));
-        assert!(err.debug().unwrap().contains("missing request body"));
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("missing request body"));
     }
 
     #[test]

@@ -9,7 +9,7 @@ use aws_lambda_events::{
         HeaderMap,
     },
 };
-use fractic_server_error::GenericServerError;
+use fractic_server_error::ServerError;
 use lambda_runtime::Error;
 use serde::Serialize;
 
@@ -55,16 +55,16 @@ where
     Ok(resp)
 }
 
-pub fn build_error(error: GenericServerError) -> Result<ApiGatewayProxyResponse, Error> {
-    if error.should_be_shown_to_client() {
+pub fn build_error(error: ServerError) -> Result<ApiGatewayProxyResponse, Error> {
+    let forward_to_client = |msg: String| {
         // Since the data field will be set to None, we need to specify the
         // correct type T, so just use int.
         let payload = ResponseWrapper::<i8> {
             ok: false,
             data: None,
-            error: Some(error.to_string().into()),
+            error: Some(msg.into()),
         };
-        let resp = ApiGatewayProxyResponse {
+        Ok::<_, Error>(ApiGatewayProxyResponse {
             // Outer status code should still be 200 for client-errors,
             // otherwise Amplify will treat it as a server error. The client
             // will know there is a client error because ok == false.
@@ -73,11 +73,31 @@ pub fn build_error(error: GenericServerError) -> Result<ApiGatewayProxyResponse,
             multi_value_headers: Default::default(),
             body: Some(serde_json::to_string(&payload)?.into()),
             is_base64_encoded: false,
-        };
-        Ok(resp)
-    } else {
-        // Return internal server error (500).
-        Err(error.into_std_error().into())
+        })
+    };
+    match error.behaviour() {
+        fractic_server_error::ServerErrorBehaviour::ForwardToClient => {
+            forward_to_client(error.to_string())
+        }
+        fractic_server_error::ServerErrorBehaviour::LogWarningForwardToClient => {
+            println!("WARNING; {}", error);
+            forward_to_client(error.to_string())
+        }
+        fractic_server_error::ServerErrorBehaviour::LogErrorForwardToClient => {
+            eprintln!("ERROR; {}", error);
+            forward_to_client(error.to_string())
+        }
+        fractic_server_error::ServerErrorBehaviour::LogWarningSendFixedMsgToClient(fixed_msg) => {
+            println!("WARNING; {}", error);
+            forward_to_client(fixed_msg.into())
+        }
+        fractic_server_error::ServerErrorBehaviour::LogErrorSendFixedMsgToClient(fixed_msg) => {
+            eprintln!("ERROR; {}", error);
+            forward_to_client(fixed_msg.into())
+        }
+        fractic_server_error::ServerErrorBehaviour::ReturnInternalServerError => {
+            Err(error.to_string().into())
+        }
     }
 }
 
@@ -135,9 +155,8 @@ fn build_headers() -> HeaderMap {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::errors::UnauthorizedError;
     use aws_lambda_events::encodings::Body;
-    use fractic_server_error::common::CriticalError;
+    use fractic_server_error::{define_client_error, define_user_error, CriticalError};
     use serde_json::Value;
 
     #[derive(Debug, Serialize)]
@@ -180,8 +199,9 @@ mod tests {
     }
 
     #[test]
-    fn test_build_error_shown_to_client() {
-        let error = UnauthorizedError::new("cxt", "msg");
+    fn test_build_user_error() {
+        define_user_error!(TestError, "User error: {details}.", { details: &str });
+        let error = TestError::new("test details");
         let result = build_error(error).unwrap();
         let body: Value = serde_json::from_str(match &result.body.unwrap() {
             Body::Text(b) => b,
@@ -195,13 +215,37 @@ mod tests {
         assert!(body["error"]
             .as_str()
             .unwrap()
-            .to_lowercase()
-            .contains("not authorized"));
+            .contains("User error: test details."));
     }
 
     #[test]
-    fn test_build_error_not_shown_to_client() {
-        let error = CriticalError::new("cxt", "msg");
+    fn test_build_client_error() {
+        define_client_error!(TestError, "Client error: {details}.", { details: &str });
+        let error = TestError::new("test details");
+        let result = build_error(error).unwrap();
+        let body: Value = serde_json::from_str(match &result.body.unwrap() {
+            Body::Text(b) => b,
+            _ => panic!("Expected response body."),
+        })
+        .unwrap();
+
+        assert_eq!(result.status_code, 200);
+        assert_eq!(body["ok"].as_bool().unwrap(), false);
+        assert_eq!(body["data"].is_null(), true);
+        assert!(body["error"]
+            .as_str()
+            .unwrap()
+            .contains("An invalid request was made by the application."));
+        assert!(!body["error"]
+            .as_str()
+            .unwrap()
+            .to_lowercase()
+            .contains("client error"));
+    }
+
+    #[test]
+    fn test_build_internal_error() {
+        let error = CriticalError::new("msg");
         let result = build_error(error);
         assert_eq!(result.is_err(), true);
     }

@@ -4,8 +4,8 @@ use fractic_aws_dynamo::errors::DynamoNotFound;
 use fractic_aws_dynamo::schema::{DynamoObject, PkSk};
 use fractic_aws_dynamo::util::DynamoUtil;
 use fractic_env_config::{load_env, EnvConfigEnum};
-use fractic_server_error::common::CriticalError;
-use fractic_server_error::GenericServerError;
+use fractic_server_error::CriticalError;
+use fractic_server_error::ServerError;
 use lambda_runtime::Error;
 use lambda_runtime::LambdaEvent;
 
@@ -30,9 +30,7 @@ struct ObjectCreatedResponseData {
 }
 
 impl CrudRouteScaffolding {
-    pub async fn new<EnvConfig: EnvConfigEnum>(
-        table_var: EnvConfig,
-    ) -> Result<Self, GenericServerError> {
+    pub async fn new<EnvConfig: EnvConfigEnum>(table_var: EnvConfig) -> Result<Self, ServerError> {
         let env = load_env::<EnvConfig>()?;
         let dynamo_util = DynamoUtil::new(env.clone_into()?, env.get(&table_var)?).await?;
         Ok(CrudRouteScaffolding { dynamo_util })
@@ -67,8 +65,7 @@ impl CrudRouteScaffolding {
 
     fn get_and_verify_request_properties<T: DynamoObject>(
         event: &LambdaEvent<ApiGatewayProxyRequest>,
-    ) -> Result<RequestProperties<T>, GenericServerError> {
-        let dbg_cxt: &'static str = "get_and_verify_request_properties";
+    ) -> Result<RequestProperties<T>, ServerError> {
         match &event.payload.http_method {
             &Method::POST => Ok(RequestProperties::<T>::Create {
                 parent_id: PkSk::from_string(&Self::get_and_verify_query_param(
@@ -87,7 +84,6 @@ impl CrudRouteScaffolding {
                 id: PkSk::from_string(&Self::get_and_verify_query_param(&event, "id")?)?,
             }),
             _ => Err(CriticalError::new(
-                dbg_cxt,
                 "CRUD routes should only be called with POST, GET, PUT, or DELETE",
             )),
         }
@@ -96,17 +92,15 @@ impl CrudRouteScaffolding {
     fn get_and_verify_query_param(
         event: &LambdaEvent<ApiGatewayProxyRequest>,
         param: &str,
-    ) -> Result<String, GenericServerError> {
-        let dbg_cxt: &'static str = "get_and_verify_query_param";
+    ) -> Result<String, ServerError> {
         event
             .payload
             .query_string_parameters
             .first(param)
-            .ok_or(InvalidRequestError::with_debug(
-                dbg_cxt,
-                "",
-                format!("query parameter {} is required", param).to_string(),
-            ))
+            .ok_or(InvalidRequestError::new(&format!(
+                "query parameter '{}' is required",
+                param
+            )))
             .map(|s| s.to_string())
     }
 
@@ -114,7 +108,7 @@ impl CrudRouteScaffolding {
         &self,
         parent_id: PkSk,
         data: T::Data,
-    ) -> Result<ObjectCreatedResponseData, GenericServerError> {
+    ) -> Result<ObjectCreatedResponseData, ServerError> {
         let written_obj = self
             .dynamo_util
             .create_item::<T>(parent_id, data, None)
@@ -124,18 +118,18 @@ impl CrudRouteScaffolding {
         })
     }
 
-    async fn read<T: DynamoObject>(&self, id: PkSk) -> Result<T, GenericServerError> {
+    async fn read<T: DynamoObject>(&self, id: PkSk) -> Result<T, ServerError> {
         match self.dynamo_util.get_item(id).await? {
             Some(object) => Ok(object),
-            None => Err(DynamoNotFound::default()),
+            None => Err(DynamoNotFound::new()),
         }
     }
 
-    async fn update<T: DynamoObject>(&self, object: T) -> Result<(), GenericServerError> {
+    async fn update<T: DynamoObject>(&self, object: T) -> Result<(), ServerError> {
         self.dynamo_util.update_item(&object).await
     }
 
-    async fn delete<T: DynamoObject>(&self, id: PkSk) -> Result<(), GenericServerError> {
+    async fn delete<T: DynamoObject>(&self, id: PkSk) -> Result<(), ServerError> {
         self.dynamo_util.delete_item::<T>(id).await
     }
 }
