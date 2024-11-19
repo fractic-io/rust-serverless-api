@@ -56,7 +56,7 @@ where
 }
 
 pub fn build_error(error: ServerError) -> Result<ApiGatewayProxyResponse, Error> {
-    let forward_to_client = |msg: String| {
+    let forward_to_client = |msg: &str| {
         // Since the data field will be set to None, we need to specify the
         // correct type T, so just use int.
         let payload = ResponseWrapper::<i8> {
@@ -77,23 +77,23 @@ pub fn build_error(error: ServerError) -> Result<ApiGatewayProxyResponse, Error>
     };
     match error.behaviour() {
         fractic_server_error::ServerErrorBehaviour::ForwardToClient => {
-            forward_to_client(error.to_string())
+            forward_to_client(error.message())
         }
         fractic_server_error::ServerErrorBehaviour::LogWarningForwardToClient => {
             println!("WARNING; {}", error);
-            forward_to_client(error.to_string())
+            forward_to_client(error.message())
         }
         fractic_server_error::ServerErrorBehaviour::LogErrorForwardToClient => {
             eprintln!("ERROR; {}", error);
-            forward_to_client(error.to_string())
+            forward_to_client(error.message())
         }
         fractic_server_error::ServerErrorBehaviour::LogWarningSendFixedMsgToClient(fixed_msg) => {
             println!("WARNING; {}", error);
-            forward_to_client(fixed_msg.into())
+            forward_to_client(fixed_msg)
         }
         fractic_server_error::ServerErrorBehaviour::LogErrorSendFixedMsgToClient(fixed_msg) => {
             eprintln!("ERROR; {}", error);
-            forward_to_client(fixed_msg.into())
+            forward_to_client(fixed_msg)
         }
         fractic_server_error::ServerErrorBehaviour::ReturnInternalServerError => {
             Err(error.to_string().into())
