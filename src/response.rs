@@ -68,11 +68,11 @@ pub fn build_error(error: ServerError) -> Result<ApiGatewayProxyResponse, Error>
 
     // 1) Forward to the client by wrapping the error in a 200 response. This
     // allows the client to gracefully handle it.
-    let forward_to_client = |msg: &str, logging_level: LoggingLevel| {
+    let forward_to_client = |public_msg: &str, logging_level: LoggingLevel| {
         match logging_level {
-            LoggingLevel::Error => eprintln!("ERROR\n{}", msg),
-            LoggingLevel::Warning => println!("WARNING\n{}", msg),
-            LoggingLevel::Info => println!("INFO\n{}", msg),
+            LoggingLevel::Error => eprintln!("ERROR\n{}", error),
+            LoggingLevel::Warning => println!("WARNING\n{}", error),
+            LoggingLevel::Info => println!("INFO\n{}", error),
         }
         println!("NOTE: Forwarding error to client. Returning 200 response.");
         // Since the data field will be set to None, we need to specify the
@@ -80,7 +80,7 @@ pub fn build_error(error: ServerError) -> Result<ApiGatewayProxyResponse, Error>
         let payload = ResponseWrapper::<i8> {
             ok: false,
             data: None,
-            error: Some(msg.into()),
+            error: Some(public_msg.into()),
         };
         Ok::<_, Error>(ApiGatewayProxyResponse {
             // Outer status code should still be 200 for client-errors,
@@ -96,13 +96,13 @@ pub fn build_error(error: ServerError) -> Result<ApiGatewayProxyResponse, Error>
 
     // 2) Return an error response, triggerring alerting, affecting lambda
     // statistics, and avoiding leaking any error data to the client.
-    let error_response = |error_code: i64, msg: &str| {
+    let error_response = |error_code: i64, public_msg: &str| {
         eprintln!("ERROR\n{}", error);
         Ok::<_, Error>(ApiGatewayProxyResponse {
             status_code: error_code,
             headers: build_headers(),
             multi_value_headers: Default::default(),
-            body: Some(msg.into()),
+            body: Some(public_msg.into()),
             is_base64_encoded: false,
         })
     };
