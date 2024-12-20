@@ -6,6 +6,7 @@
 extern crate serde_json_path_to_error as serde_json;
 
 mod auth;
+mod constants;
 mod crud;
 mod errors;
 mod macros;

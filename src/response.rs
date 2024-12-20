@@ -13,6 +13,8 @@ use fractic_server_error::ServerError;
 use lambda_runtime::Error;
 use serde::Serialize;
 
+use crate::constants::{INTERNAL_SERVER_ERROR_MSG, UNAUTHORIZED_ERROR_MSG};
+
 // API Gateway response utils.
 // --------------------------------------------------
 
@@ -56,7 +58,23 @@ where
 }
 
 pub fn build_error(error: ServerError) -> Result<ApiGatewayProxyResponse, Error> {
-    let forward_to_client = |msg: &str| {
+    enum LoggingLevel {
+        Error,
+        Warning,
+        Info,
+    }
+
+    // Two ways to handle errors:
+
+    // 1) Forward to the client by wrapping the error in a 200 response. This
+    // allows the client to gracefully handle it.
+    let forward_to_client = |msg: &str, logging_level: LoggingLevel| {
+        match logging_level {
+            LoggingLevel::Error => eprintln!("ERROR\n{}", msg),
+            LoggingLevel::Warning => println!("WARNING\n{}", msg),
+            LoggingLevel::Info => println!("INFO\n{}", msg),
+        }
+        println!("NOTE: Forwarding error to client. Returning 200 response.");
         // Since the data field will be set to None, we need to specify the
         // correct type T, so just use int.
         let payload = ResponseWrapper::<i8> {
@@ -75,28 +93,42 @@ pub fn build_error(error: ServerError) -> Result<ApiGatewayProxyResponse, Error>
             is_base64_encoded: false,
         })
     };
+
+    // 2) Return an error response, triggerring alerting, affecting lambda
+    // statistics, and avoiding leaking any error data to the client.
+    let error_response = |error_code: i64, msg: &str| {
+        eprintln!("ERROR\n{}", error);
+        Ok::<_, Error>(ApiGatewayProxyResponse {
+            status_code: error_code,
+            headers: build_headers(),
+            multi_value_headers: Default::default(),
+            body: Some(msg.into()),
+            is_base64_encoded: false,
+        })
+    };
+
+    // Decide based on the error behaviour type.
     match error.behaviour() {
         fractic_server_error::ServerErrorBehaviour::ForwardToClient => {
-            forward_to_client(error.message())
+            forward_to_client(error.message(), LoggingLevel::Info)
         }
         fractic_server_error::ServerErrorBehaviour::LogWarningForwardToClient => {
-            println!("WARNING; {}", error);
-            forward_to_client(error.message())
+            forward_to_client(error.message(), LoggingLevel::Warning)
         }
         fractic_server_error::ServerErrorBehaviour::LogErrorForwardToClient => {
-            eprintln!("ERROR; {}", error);
-            forward_to_client(error.message())
+            forward_to_client(error.message(), LoggingLevel::Error)
         }
         fractic_server_error::ServerErrorBehaviour::LogWarningSendFixedMsgToClient(fixed_msg) => {
-            println!("WARNING; {}", error);
-            forward_to_client(fixed_msg)
+            forward_to_client(fixed_msg, LoggingLevel::Warning)
         }
         fractic_server_error::ServerErrorBehaviour::LogErrorSendFixedMsgToClient(fixed_msg) => {
-            eprintln!("ERROR; {}", error);
-            forward_to_client(fixed_msg)
+            forward_to_client(fixed_msg, LoggingLevel::Error)
         }
         fractic_server_error::ServerErrorBehaviour::ReturnInternalServerError => {
-            Err(error.to_string().into())
+            error_response(500, INTERNAL_SERVER_ERROR_MSG)
+        }
+        fractic_server_error::ServerErrorBehaviour::ReturnUnauthorized => {
+            error_response(401, UNAUTHORIZED_ERROR_MSG)
         }
     }
 }
@@ -154,6 +186,8 @@ fn build_headers() -> HeaderMap {
 
 #[cfg(test)]
 mod tests {
+    use crate::UnauthorizedError;
+
     use super::*;
     use aws_lambda_events::encodings::Body;
     use fractic_server_error::{define_client_error, define_user_error, CriticalError};
@@ -245,8 +279,26 @@ mod tests {
 
     #[test]
     fn test_build_internal_error() {
-        let error = CriticalError::new("msg");
-        let result = build_error(error);
-        assert_eq!(result.is_err(), true);
+        let error = CriticalError::new("internal error message");
+        let result = build_error(error).unwrap();
+        let body = match result.body.unwrap() {
+            Body::Text(b) => b,
+            _ => panic!("Expected response body."),
+        };
+        assert_eq!(result.status_code, 500);
+        assert!(!body.contains("internal error message"));
+    }
+
+    #[test]
+    fn test_build_unauthorized_error() {
+        let error =
+            UnauthorizedError::with_debug(&"internal authentication error message".to_string());
+        let result = build_error(error).unwrap();
+        let body = match result.body.unwrap() {
+            Body::Text(b) => b,
+            _ => panic!("Expected response body."),
+        };
+        assert_eq!(result.status_code, 401);
+        assert!(!body.contains("internal authentication error message"));
     }
 }
